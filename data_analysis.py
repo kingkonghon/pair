@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import datetime as dt
 
 def order_num_analysis():
     path = 'F:\\testdata\\OrderNum.csv'
@@ -66,12 +67,164 @@ def fake_order_num_analysis():
     print result_df
 
 def event_analysis():
+    symbol = ['AUD','CAD']
+
     path_event = 'F:\\testdata\\AUDCAD_event.csv'
     path_pricedata = 'F:\\testdata\\dukas\\AUDCAD_M1.csv'
-    event_df = pd.read_csv(path_event,header=None,index_col=None)
+    event_df = pd.read_csv(path_event,header=0,index_col=None)
     price_data_df = pd.read_csv(path_pricedata,header=None,index_col=None)
+
+    #event
+    event_df.index = pd.to_datetime(event_df['Unnamed: 0'],format='%Y-%m-%d %H:%M:%S')
+    del event_df['Unnamed: 0']
+
+    criterion = event_df['currency'].map(lambda x:x in symbol)
+
+    search_event = event_df[criterion]
+    search_event = search_event.loc[lambda df:df.impact == 'high']
+
+    search_event = search_event.dropna(how='any')
+    search_event = search_event.loc['20140101':'20161030']
+
+    for i in range(0,len(search_event.index)):
+        try:
+            search_event['actual'][i] = float(search_event['actual'][i].strip('%BK'))
+            search_event['forecast'][i] = float(search_event['forecast'][i].strip('%BK'))
+            search_event['previous'][i] = float(search_event['previous'][i].strip('%BK'))
+        except AttributeError:
+            search_event['actual'][i] = 0
+            search_event['forecast'][i] = 0
+            search_event['previous'][i] = 0
+
+    #print search_event
+
+    #price
+    price_data_df.index = pd.to_datetime(price_data_df[0], format='%Y.%m.%d %H:%M')
+    del price_data_df[0]
+    del price_data_df[5]
+    price_data_df.columns = ['open','high','low','close']
+
+    open_price = []
+    high_price = []
+    low_price = []
+    close_price = []
+    delta_t = dt.timedelta(hours=2)
+
+    for t in search_event.index:
+        try:
+            open_price.append(price_data_df.loc[t]['open'])
+            high_price.append(price_data_df['high'].loc[t:t+delta_t].max())
+            low_price.append(price_data_df['low'].loc[t:t+delta_t].min())
+            close_price.append(price_data_df.loc[t+delta_t]['close'])
+        except KeyError:
+            break
+
+    search_event['open'] = open_price
+    search_event['high'] = high_price
+    search_event['low'] = low_price
+    search_event['close'] = close_price
+    search_event['diff'] = search_event['close'] - search_event['open']
+
+    # searching for event that cause 500 points move in price
+    '''
+    search_event_deep = search_event.loc[lambda df:abs(df.open - df.close) > 0.005,['actual','forecast','description','diff']]
+
+    event_count = {}
+
+    for i in range(0,search_event_deep.index.size):
+        des = search_event_deep['description'][i]
+        if des not in event_count.keys():
+            event_count[des] = 1
+        else:
+            event_count[des] += 1
+
+    print event_count
+
+    for des in event_count.keys():
+        #total_event_count[des] = search_event.loc[lambda df:df.description == des].index.size
+        search_temp = search_event.loc[lambda df:df.description == des,['currency','actual','forecast','previous','description','diff']]
+        total_count_for_single_event = search_temp.index.size
+        #print  event_count[des],total_count_for_single_event,float(event_count[des]) / total_count_for_single_event
+        if float(event_count[des]) / total_count_for_single_event > 0.1:
+            search_temp = search_temp.loc[lambda df:df['actual'] != df['forecast']]
+            total_count_for_single_event = search_temp.index.size
+            print search_temp
+
+            search_temp_deep = search_temp.loc[lambda df:df['currency'] == 'AUD']
+            search_temp_deep = search_temp_deep.loc[lambda df:df.actual > df.forecast]
+            search_temp_deep = search_temp_deep.loc[lambda df:df['diff'] > 0]
+            print search_temp_deep
+
+            correct_num = search_temp_deep.index.size
+
+            search_temp_deep = search_temp.loc[lambda df: df['currency'] == 'AUD']
+            search_temp_deep = search_temp_deep.loc[lambda df: df.actual < df.forecast]
+            search_temp_deep = search_temp_deep.loc[lambda df: df['diff'] < 0]
+
+            correct_num += search_temp_deep.index.size
+
+            search_temp_deep = search_temp.loc[lambda df: df['currency'] == 'CAD']
+            search_temp_deep = search_temp_deep.loc[lambda df: df.actual < df.forecast]
+            search_temp_deep = search_temp_deep.loc[lambda df: df['diff'] > 0]
+
+            correct_num += search_temp_deep.index.size
+
+            search_temp_deep = search_temp.loc[lambda df: df['currency'] == 'CAD']
+            search_temp_deep = search_temp_deep.loc[lambda df: df.actual > df.forecast]
+            search_temp_deep = search_temp_deep.loc[lambda df: df['diff'] < 0]
+
+            correct_num += search_temp_deep.index.size
+
+            print des, float(correct_num) / total_count_for_single_event
+    '''
+    #calculate average move of price
+    #'''
+    search_event_deep = search_event.loc[lambda df:df.actual != df.forecast]
+
+    average_move = {}
+    event_num = {}
+    for i in range(0,search_event_deep.index.size):
+        des = search_event_deep['description'][i]
+        if des not in average_move.keys():
+            average_move[des] = abs(search_event_deep['diff'][i])
+            event_num[des] = 1
+        else:
+            average_move[des] += abs(search_event_deep['diff'][i])
+            event_num[des] += 1
+
+    for des in average_move.keys():
+        average_move[des] = average_move[des] / event_num[des]
+
+    print sorted(average_move.items(),key=lambda d:d[1],reverse=True)
+    average_move.pop('Unemployment Rate')
+
+    for des in average_move.keys():
+        search_temp = search_event_deep.loc[lambda df:df.description == des]
+
+        search_temp_aud = search_temp.loc[lambda df:df.currency == 'AUD']
+        search_temp_deep = search_temp_aud.loc[lambda df:df.actual > df.forecast]
+        correct_num = search_temp_deep.loc[lambda df:df['diff'] > 0].size
+
+        search_temp_deep = search_temp_aud.loc[lambda df: df.actual < df.forecast]
+        correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+
+        search_temp_cad = search_temp.loc[lambda df: df.currency == 'CAD']
+        search_temp_deep = search_temp_cad.loc[lambda df: df.actual > df.forecast]
+        correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+
+        search_temp_deep = search_temp_cad.loc[lambda df: df.actual < df.forecast]
+        correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].size
+
+        print des,float(correct_num)/search_temp.size, search_temp.size, search_temp_aud.size + search_temp_cad.size
+
+
+
+
+    #'''
 
 if __name__ == '__main__':
     #order_num_analysis()
 
-    fake_order_num_analysis()
+    #fake_order_num_analysis()
+
+    event_analysis()
