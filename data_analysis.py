@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime as dt
+import numpy as np
 
 def order_num_analysis():
     path = 'F:\\testdata\\OrderNum.csv'
@@ -197,6 +198,8 @@ def event_analysis():
 
     print sorted(average_move.items(),key=lambda d:d[1],reverse=True)
     average_move.pop('Unemployment Rate')
+    average_move.pop('Employment Change')
+
 
     for des in average_move.keys():
         search_temp = search_event_deep.loc[lambda df:df.description == des]
@@ -217,7 +220,48 @@ def event_analysis():
 
         print des,float(correct_num)/search_temp.size, search_temp.size, search_temp_aud.size + search_temp_cad.size
 
+    # unemployment rate
+    search_temp = search_event_deep.loc[lambda df:df.description == 'Unemployment Rate']
 
+    search_temp_aud = search_temp.loc[lambda df: df.currency == 'AUD']
+    search_temp_deep = search_temp_aud.loc[lambda df: df.actual < df.forecast]
+    correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].size
+
+    search_temp_deep = search_temp_aud.loc[lambda df: df.actual > df.forecast]
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+
+    search_temp_cad = search_temp.loc[lambda df: df.currency == 'CAD']
+    search_temp_deep = search_temp_cad.loc[lambda df: df.actual < df.forecast]
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+
+    search_temp_deep = search_temp_cad.loc[lambda df: df.actual > df.forecast]
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].size
+
+    print 'Unemployment Rate', float(correct_num) / search_temp.size, search_temp.size, search_temp_aud.size + search_temp_cad.size
+
+    #employment change
+    search_temp = search_event_deep.loc[lambda df: df.description == 'Employment Change']
+    search_temp = search_temp.loc[lambda df: np.sign(df.actual) != np.sign(df.forecast)]
+
+    search_temp_aud = search_temp.loc[lambda df: df.currency == 'AUD']
+    search_temp_deep = search_temp_aud.loc[lambda df: df.forecast < 0]
+    search_temp_deep = search_temp_deep.loc[lambda df: df.actual > 0]
+    correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].size
+
+    search_temp_deep = search_temp_aud.loc[lambda df: df.forecast > 0]
+    search_temp_deep = search_temp_deep.loc[lambda df: df.actual < 0]
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+
+    search_temp_cad = search_temp.loc[lambda df: df.currency == 'CAD']
+    search_temp_deep = search_temp_cad.loc[lambda df: df.forecast < 0]
+    search_temp_deep = search_temp_deep.loc[lambda df: df.actual > 0]
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+
+    search_temp_deep = search_temp_cad.loc[lambda df: df.forecast > 0]
+    search_temp_deep = search_temp_deep.loc[lambda df: df.actual < 0]
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].size
+
+    print 'Employment Change', float(correct_num) / search_temp.size, search_temp.size, search_temp_aud.size + search_temp_cad.size
 
 
     #'''
