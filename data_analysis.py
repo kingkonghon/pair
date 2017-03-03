@@ -180,10 +180,23 @@ def event_analysis():
     '''
     #calculate average move of price
     #'''
+
+    #----------------------------------------
+    # analysis effect when actual != forecast
+    #----------------------------------------
     search_event_deep = search_event.loc[lambda df:df.actual != df.forecast]
 
     average_move = {}
     event_num = {}
+
+    #result_df = pd.DataFrame(columns=['WinPercent', 'AveMove','70%diff','70%AveMove'])
+    result_df = pd.DataFrame(columns=['WP(AUD)', 'AM(AUD)','Num(AUD)',
+                                      'WP(CAD)', 'AM(CAD)','Num(CAD)',
+                                      '70u(AUD)','70uAM(AUD)','70uNum(AUD)','70d(AUD)','70dAM(AUD)','70dNum(AUD)',
+                                      '70u(CAD)','70uAM(CAD)','70uNum(CAD)','70d(CAD)','70dAM(CAD)','70dNum(CAD)'])
+
+
+    # find all event name, and absolute event impact
     for i in range(0,search_event_deep.index.size):
         des = search_event_deep['description'][i]
         if des not in average_move.keys():
@@ -197,74 +210,367 @@ def event_analysis():
         average_move[des] = average_move[des] / event_num[des]
 
     print sorted(average_move.items(),key=lambda d:d[1],reverse=True)
-    average_move.pop('Unemployment Rate')
-    average_move.pop('Employment Change')
+    #average_move.pop('Unemployment Rate')
+    #average_move.pop('Employment Change')
+
+    temp_buff = {}
 
 
+    # ordinary event (positively correlated with AUDCAD)
     for des in average_move.keys():
+        if des == 'Unemployment Rate' or des == 'Employment Change':
+            continue
+
+        # filter for each event
         search_temp = search_event_deep.loc[lambda df:df.description == des]
 
+        #seperate different currency
+
+        #if it is AUD
         search_temp_aud = search_temp.loc[lambda df:df.currency == 'AUD']
-        search_temp_deep = search_temp_aud.loc[lambda df:df.actual > df.forecast]
-        correct_num = search_temp_deep.loc[lambda df:df['diff'] > 0].size
 
-        search_temp_deep = search_temp_aud.loc[lambda df: df.actual < df.forecast]
-        correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+        if not search_temp_aud.empty:
+            search_temp_deep = search_temp_aud.loc[lambda df:df.actual > df.forecast]
+            u_correct_num = search_temp_deep.loc[lambda df:df['diff'] > 0].index.size
+            u_sum_move = search_temp_deep['diff'].sum()
+            u_total_num = search_temp_deep.index.size
 
+            search_temp_deep = search_temp_aud.loc[lambda df: df.actual < df.forecast]
+            d_correct_num = search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+            d_sum_move = (-search_temp_deep['diff']).sum()
+            d_total_num = search_temp_deep.index.size
+
+            temp_buff['WP(AUD)'] = float(u_correct_num + d_correct_num) / search_temp_aud.index.size
+            temp_buff['AM(AUD)'] = (u_sum_move + d_sum_move) / search_temp_aud.index.size
+            temp_buff['Num(AUD)'] = search_temp_aud.index.size
+
+            #find how far up is the difference between actual and forecast will have a 70% winning percent
+            u_diff = 0
+
+            d_diff = 0
+
+            #AUD up suprise
+            while float(u_correct_num)/u_total_num < 0.7:
+                u_diff += 0.1
+
+                search_temp_deep = search_temp_aud.loc[lambda df: df.actual > df.forecast + u_diff]
+                #cannot find
+                if search_temp_deep.empty:
+                    temp_buff['70u(AUD)'] = None
+                    temp_buff['70uAM(AUD)'] = None
+                    temp_buff['70uNum(AUD)'] = None
+                    break
+
+                u_correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+                u_sum_move = search_temp_deep['diff'].sum()
+                u_total_num = search_temp_deep.index.size
+            else:
+                temp_buff['70u(AUD)'] = u_diff
+                temp_buff['70uAM(AUD)'] = u_sum_move / u_total_num
+                temp_buff['70uNum(AUD)'] = u_total_num
+
+            #AUD down suprise
+            while float(d_correct_num)/d_total_num < 0.7:
+                d_diff += 0.1
+
+                search_temp_deep = search_temp_aud.loc[lambda df: df.actual < df.forecast - d_diff]
+                #cannot find
+                if search_temp_deep.empty:
+                    temp_buff['70d(AUD)'] = None
+                    temp_buff['70dAM(AUD)'] = None
+                    temp_buff['70dNum(AUD)'] = None
+                    break
+
+                d_correct_num = search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+                d_sum_move = (-search_temp_deep['diff']).sum()
+                d_total_num = search_temp_deep.index.size
+            else:
+                temp_buff['70d(AUD)'] = d_diff
+                temp_buff['70dAM(AUD)'] = d_sum_move / d_total_num
+                temp_buff['70dNum(AUD)'] = d_total_num
+
+        else:
+            temp_buff['WP(AUD)'] = 0
+            temp_buff['AM(AUD)'] = 0
+            temp_buff['Num(AUD)'] = 0
+
+            temp_buff['70u(AUD)'] = None
+            temp_buff['70uAM(AUD)'] = None
+            temp_buff['70uNum(AUD)'] = None
+            temp_buff['70d(AUD)'] = None
+            temp_buff['70dAM(AUD)'] = None
+            temp_buff['70dNum(AUD)'] = None
+
+
+        #CAD
         search_temp_cad = search_temp.loc[lambda df: df.currency == 'CAD']
-        search_temp_deep = search_temp_cad.loc[lambda df: df.actual > df.forecast]
-        correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
 
-        search_temp_deep = search_temp_cad.loc[lambda df: df.actual < df.forecast]
-        correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].size
+        if not search_temp_cad.empty:
+            search_temp_deep = search_temp_cad.loc[lambda df: df.actual > df.forecast]
+            u_correct_num = search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+            u_sum_move = (-search_temp_deep['diff']).sum()
+            u_total_num = search_temp_deep.index.size
 
-        print des,float(correct_num)/search_temp.size, search_temp.size, search_temp_aud.size + search_temp_cad.size
+            search_temp_deep = search_temp_cad.loc[lambda df: df.actual < df.forecast]
+            d_correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+            d_sum_move = search_temp_deep['diff'].sum()
+            d_total_num = search_temp_deep.index.size
+
+            temp_buff['WP(CAD)'] = float(u_correct_num + d_correct_num) / search_temp_cad.index.size
+            temp_buff['AM(CAD)'] = (u_sum_move + d_sum_move) / search_temp_cad.index.size
+            temp_buff['Num(CAD)'] = search_temp_cad.index.size
+
+            # find how far down is the difference between actual and forecast will have a 70% winning percent
+            u_diff = 0
+            d_diff = 0
+
+            #CAD up suprise
+            while float(u_correct_num) / u_total_num < 0.7:
+                u_diff += 0.1
+
+                search_temp_deep = search_temp_cad.loc[lambda df: df.actual > df.forecast + u_diff]
+                #cannot find
+                if search_temp_deep.empty:
+                    temp_buff['70u(CAD)'] = None
+                    temp_buff['70uAM(CAD)'] = None
+                    temp_buff['70uNum(CAD)'] = None
+                    break
+
+                u_correct_num = search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+                u_sum_move = (-search_temp_deep['diff']).sum()
+                u_total_num = search_temp_deep.index.size
+            else:
+                temp_buff['70u(CAD)'] = u_diff
+                temp_buff['70uAM(CAD)'] = u_sum_move / u_total_num
+                temp_buff['70uNum(CAD)'] = u_total_num
+
+            #CAD down suprise
+            while float(d_correct_num) / d_total_num < 0.7:
+                d_diff += 0.1
+
+                search_temp_deep = search_temp_cad.loc[lambda df: df.actual < df.forecast - d_diff]
+                #cannot find
+                if search_temp_deep.empty:
+                    temp_buff['70d(CAD)'] = None
+                    temp_buff['70dAM(CAD)'] = None
+                    temp_buff['70dNum(CAD)'] = None
+                    break
+
+                d_correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+                d_sum_move = search_temp_deep['diff'].sum()
+                d_total_num = search_temp_deep.index.size
+            else:
+                temp_buff['70d(CAD)'] = d_diff
+                temp_buff['70dAM(CAD)'] = d_sum_move / d_total_num
+                temp_buff['70dNum(CAD)'] = d_total_num
+
+        else:
+            temp_buff['WP(CAD)'] = 0
+            temp_buff['AM(CAD)'] = 0
+            temp_buff['Num(CAD)'] = 0
+
+            temp_buff['70u(CAD)'] = None
+            temp_buff['70uAM(CAD)'] = None
+            temp_buff['70uNum(CAD)'] = None
+
+            temp_buff['70d(CAD)'] = None
+            temp_buff['70dAM(CAD)'] = None
+            temp_buff['70dNum(CAD)'] = None
+
+        #print aud_correct_num,aud_sum_move,cad_correct_num,cad_sum_move
+
+        #print temp_buff
+        #print temp_buff
+
+        result_df.loc[des] = temp_buff
+
+        #print des,float(correct_num)/search_temp.index.size, \
+        #    sum_move / search_temp.index.size,\
+        #    search_temp.index.size, search_temp_aud.index.size + search_temp_cad.index.size
 
     # unemployment rate
     search_temp = search_event_deep.loc[lambda df:df.description == 'Unemployment Rate']
 
+    #AUD
     search_temp_aud = search_temp.loc[lambda df: df.currency == 'AUD']
-    search_temp_deep = search_temp_aud.loc[lambda df: df.actual < df.forecast]
-    correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].size
+    if search_temp_aud.empty:
+        search_temp_deep = search_temp_aud.loc[lambda df: df.actual < df.forecast]
+        d_correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+        d_sum_move = search_temp_deep['diff'].sum()
+        d_total_num = search_temp_deep.index.size
 
-    search_temp_deep = search_temp_aud.loc[lambda df: df.actual > df.forecast]
-    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+        search_temp_deep = search_temp_aud.loc[lambda df: df.actual > df.forecast]
+        u_correct_num = search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+        u_sum_move = (-search_temp_deep['diff']).sum()
+        u_total_num = search_temp_deep.index.size
 
+        temp_buff['WP(AUD)'] = float(d_correct_num + u_correct_num) / (d_total_num + u_total_num)
+        temp_buff['AM(AUD'] = (d_sum_move + u_sum_move) / (d_total_num + u_total_num)
+        temp_buff['Num(AUD)'] = d_total_num + u_total_num
+
+        #find how far the difference would have 70% winning percentage
+        u_diff = 0
+        d_diff = 0
+
+        #down suprise (AUDCAD price rise)
+        while float(d_correct_num) / d_total_num < 0.7:
+            d_diff += 0.1
+
+            search_temp_deep = search_temp_aud.loc[lambda df:df.actual < df.forecast - d_diff]
+            #cannot find
+            if search_temp_deep.empty:
+                temp_buff['70d(AUD)'] = None
+                temp_buff['70dAM(AUD)'] = None
+                temp_buff['70dNum(AUD)'] = None
+                break
+
+            d_correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+            d_sum_move = search_temp_deep['diff'].sum()
+            d_total_num = search_temp_deep.index.size
+        else:
+            temp_buff['70d(AUD'] = d_diff
+            temp_buff['70dAM(AUD)'] = d_sum_move / d_total_num
+            temp_buff['70dNum(AUD)'] = d_total_num
+
+        #up suprise (AUDCAD price fall)
+        while float(u_correct_num) / u_total_num < 0.7:
+            u_diff += 0.1
+
+            search_temp_deep = search_temp_aud.loc[lambda df:df.actual > df.forecast + u_diff]
+            #cannot find
+            if search_temp_deep.empty:
+                temp_buff['70u(AUD)'] = None
+                temp_buff['70uAM(AUD)'] = None
+                temp_buff['70uNum(AUD)'] = None
+                break
+
+            u_correct_num = search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+            u_sum_move = (-search_temp_deep['diff']).sum()
+            u_total_num = search_temp_deep.index.size
+        else:
+            temp_buff['70u(AUD'] = u_diff
+            temp_buff['70uAM(AUD)'] = u_sum_move / u_total_num
+            temp_buff['70uNum(AUD)'] = u_total_num
+
+    else:
+        temp_buff['WP(AUD)'] = 0
+        temp_buff['AM(AUD)'] = 0
+        temp_buff['Num(AUD)']
+
+        temp_buff['70u(AUD)'] = None
+        temp_buff['70uAM(AUD)'] = None
+        temp_buff['70uNum(AUD)'] = None
+
+        temp_buff['70d(AUD)'] = None
+        temp_buff['70dAM(AUD)'] = None
+        temp_buff['70dNum(AUD)'] = None
+
+
+    #CAD
     search_temp_cad = search_temp.loc[lambda df: df.currency == 'CAD']
-    search_temp_deep = search_temp_cad.loc[lambda df: df.actual < df.forecast]
-    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+    if search_temp_cad.empty:
+        search_temp_deep = search_temp_cad.loc[lambda df: df.actual < df.forecast]
+        correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+        sum_move += (-search_temp_deep['diff']).sum()
 
-    search_temp_deep = search_temp_cad.loc[lambda df: df.actual > df.forecast]
-    correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].size
+        search_temp_deep = search_temp_cad.loc[lambda df: df.actual > df.forecast]
+        correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+        sum_move += search_temp_deep['diff'].sum()
 
-    print 'Unemployment Rate', float(correct_num) / search_temp.size, search_temp.size, search_temp_aud.size + search_temp_cad.size
+
+    else:
+        temp_buff['WP(CAD)'] = 0
+        temp_buff['AM(CAD)'] = 0
+        temp_buff['70u(CAD)'] = None
+        temp_buff['70uAM(CAD)'] = None
+        temp_buff['70d(CAD)'] = None
+        temp_buff['70dAM(CAD)'] = None
+
+    temp_buff['WinPercent'] = float(correct_num) / search_temp.index.size
+    temp_buff['AveMove'] = sum_move / search_temp.index.size
+
+    result_df.loc['Unemployment Rate'] = temp_buff
+
+    print 'Unemployment Rate', float(correct_num) / search_temp.index.size, \
+        sum_move / search_temp.index.size, \
+        search_temp.index.size, search_temp_aud.index.size + search_temp_cad.index.size
+
 
     #employment change
     search_temp = search_event_deep.loc[lambda df: df.description == 'Employment Change']
     search_temp = search_temp.loc[lambda df: np.sign(df.actual) != np.sign(df.forecast)]
 
+    #print search_temp
+
     search_temp_aud = search_temp.loc[lambda df: df.currency == 'AUD']
     search_temp_deep = search_temp_aud.loc[lambda df: df.forecast < 0]
     search_temp_deep = search_temp_deep.loc[lambda df: df.actual > 0]
-    correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].size
+    correct_num = search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+    sum_move = search_temp_deep['diff'].sum()
 
     search_temp_deep = search_temp_aud.loc[lambda df: df.forecast > 0]
     search_temp_deep = search_temp_deep.loc[lambda df: df.actual < 0]
-    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+    sum_move += (-search_temp_deep['diff']).sum()
 
     search_temp_cad = search_temp.loc[lambda df: df.currency == 'CAD']
     search_temp_deep = search_temp_cad.loc[lambda df: df.forecast < 0]
     search_temp_deep = search_temp_deep.loc[lambda df: df.actual > 0]
-    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].size
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] < 0].index.size
+    sum_move += (-search_temp_deep['diff']).sum()
 
     search_temp_deep = search_temp_cad.loc[lambda df: df.forecast > 0]
     search_temp_deep = search_temp_deep.loc[lambda df: df.actual < 0]
-    correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].size
+    correct_num += search_temp_deep.loc[lambda df: df['diff'] > 0].index.size
+    sum_move += search_temp_deep['diff'].sum()
 
-    print 'Employment Change', float(correct_num) / search_temp.size, search_temp.size, search_temp_aud.size + search_temp_cad.size
+    temp_buff['WinPercent'] = float(correct_num) / search_temp.index.size
+    temp_buff['AveMove'] = sum_move / search_temp.index.size
+
+    result_df.loc['Employment Change'] = temp_buff
+
+    print 'Employment Change', float(correct_num) / search_temp.index.size, \
+        sum_move / search_temp.index.size, \
+        search_temp.index.size, search_temp_aud.index.size + search_temp_cad.index.size
 
 
     #'''
+    print result_df
+
+    result_df.to_csv('E:\\forex_factory\\audcad_event_analysis(a!=f).csv',header=True, index=True, mode='w')
+
+    # ----------------------------------------
+    # analysis effect when actual == forecast, but actual != previous
+    # ----------------------------------------
+    search_event_deep = search_event.loc[lambda df: df.actual == df.forecast]
+    search_event_deep = search_event_deep.loc[lambda df:df.actual != df.previous]
+
+    average_move = {}
+    event_num = {}
+
+    # result_df = pd.DataFrame(columns=['WinPercent', 'AveMove','70%diff','70%AveMove'])
+    result_df = pd.DataFrame(columns=['WP(AUD)', 'AM(AUD)', 'WP(CAD)', 'AM(CAD)', '70u(AUD)', '70uAM(AUD)', '70d(AUD)',
+                                      '70dAM(AUD)', '70u(CAD)', '70uAM(CAD)', '70d(CAD)', '70dAM(CAD)', ])
+
+    # find all event name
+    for i in range(0, search_event_deep.index.size):
+        des = search_event_deep['description'][i]
+        if des not in average_move.keys():
+            average_move[des] = abs(search_event_deep['diff'][i])
+            event_num[des] = 1
+        else:
+            average_move[des] += abs(search_event_deep['diff'][i])
+            event_num[des] += 1
+
+    for des in average_move.keys():
+        average_move[des] = average_move[des] / event_num[des]
+
+    print sorted(average_move.items(), key=lambda d: d[1], reverse=True)
+    # average_move.pop('Unemployment Rate')
+    # average_move.pop('Employment Change')
+
+    temp_buff = {}
+
 
 if __name__ == '__main__':
     #order_num_analysis()
